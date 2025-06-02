@@ -16,8 +16,9 @@ mcp = FastMCP(
 
 @mcp.tool()
 async  def see() -> str:
-    """获取用户名
-
+    """获取用户的姓名
+    返回：
+        用户姓名
     """
     return "张领"
 
@@ -25,11 +26,18 @@ async  def see() -> str:
 async  def stdio(name: str) -> str:
     """获取用户的性别
 
-    Args:
+    参数:
         name: 用户的姓名
+
+    返回：
+        用户性别
     """
     return "男"
 
 
 if __name__ == '__main__':
-    mcp.run(transport="streamable-http")  # uv --dir E:\dev\ai\mcp_demo  run mcp_server.py
+    # mcp.run(transport="streamable-http")  # uv --dir E:\dev\ai\mcp_demo  run mcp_server.py
+    print("已注册的工具:")
+    for tool_info in mcp._tool_manager.list_tools():  # 这个方法是同步的
+        print(f"- {tool_info.name}: {tool_info.description}")
+    mcp.run(transport='stdio')
