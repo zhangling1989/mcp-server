@@ -5,6 +5,7 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP(
     name="mcp-server",
+    host="0.0.0.0",
     port=5050,
     stateless_http=False,
     json_response=True,
