@@ -15,9 +15,11 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-async  def see() -> str:
+async  def see(xing: str) -> str:
     """获取用户的姓名
-    返回：
+    参数:
+        xing：姓
+    返回:
         用户姓名
     """
     return "张领"
@@ -29,7 +31,7 @@ async  def stdio(name: str) -> str:
     参数:
         name: 用户的姓名
 
-    返回：
+    返回:
         用户性别
     """
     return f"{name}：男"
