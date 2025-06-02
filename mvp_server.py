@@ -43,4 +43,4 @@ if __name__ == '__main__':
     for tool_info in mcp._tool_manager.list_tools():  # 这个方法是同步的
         print(f"- {tool_info.name}: {tool_info.description}")
     # mcp.run(transport='stdio')
-    mcp.run(transport="streamable-http")
+    mcp.run(transport="sse")
