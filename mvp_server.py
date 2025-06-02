@@ -8,7 +8,7 @@ mcp = FastMCP(
     host="0.0.0.0",
     port=5050,
     stateless_http=False,
-    json_response=True,
+    json_response=False,
     streamable_http_path="/mcp"
 )
 
