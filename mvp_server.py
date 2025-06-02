@@ -1,21 +1,24 @@
 from typing import Any
 import  httpx
 
-from mcp.server.fastmcp import FastMCP
+# from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP(
-    name="mcp-server",
+from fastmcp import FastMCP
+
+mcp_sse = FastMCP(
+    name="mcp-sse-server",
     host="0.0.0.0",
-    port=5050,
-    stateless_http=False,
-    json_response=False,
-    streamable_http_path="/mcp"
+    port=5050
+)
+
+mcp_streamable = FastMCP(
+    name="mcp-streamable-server"
 )
 
 
 
-@mcp.tool()
-async  def see(xing: str) -> str:
+@mcp_sse.tool()
+async  def name(xing: str) -> str:
     """获取用户的姓名
     参数:
         xing：姓
@@ -24,8 +27,30 @@ async  def see(xing: str) -> str:
     """
     return f"姓：{xing} 名领"
 
-@mcp.tool()
-async  def stdio(name: str) -> str:
+@mcp_sse.tool()
+async  def sex(name: str) -> str:
+    """获取用户的性别
+
+    参数:
+        name: 用户的姓名
+
+    返回:
+        用户性别
+    """
+    return f"{name}性别：男"
+
+@mcp_streamable.tool()
+async  def name(xing: str) -> str:
+    """获取用户的姓名
+    参数:
+        xing：姓
+    返回:
+        用户姓名
+    """
+    return f"姓：{xing} 名领"
+
+@mcp_streamable.tool()
+async  def sex(name: str) -> str:
     """获取用户的性别
 
     参数:
@@ -39,8 +64,12 @@ async  def stdio(name: str) -> str:
 
 if __name__ == '__main__':
     # mcp.run(transport="streamable-http")  # uv --dir E:\dev\ai\mcp_demo  run mcp_server.py
-    print("已注册的工具:")
-    for tool_info in mcp._tool_manager.list_tools():  # 这个方法是同步的
+    print("sse已注册的工具:")
+    for tool_info in mcp_sse._tool_manager.list_tools():  # 这个方法是同步的
+        print(f"- {tool_info.name}: {tool_info.description}")
+    print("streamable已注册的工具:")
+    for tool_info in mcp_streamable._tool_manager.list_tools():  # 这个方法是同步的
         print(f"- {tool_info.name}: {tool_info.description}")
     # mcp.run(transport='stdio')
-    mcp.run(transport="sse")
+    # mcp_sse.run(transport="sse")
+    mcp_streamable.run(transport="streamable-http",host="0.0.0.0",port="5050",path="/mcp")
