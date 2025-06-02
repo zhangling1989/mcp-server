@@ -32,7 +32,7 @@ async  def stdio(name: str) -> str:
     返回：
         用户性别
     """
-    return "男"
+    return f"{name}：男"
 
 
 if __name__ == '__main__':
