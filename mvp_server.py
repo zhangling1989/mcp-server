@@ -22,7 +22,7 @@ async  def see(xing: str) -> str:
     返回:
         用户姓名
     """
-    return "张领"
+    return f"姓：{xing} 名领"
 
 @mcp.tool()
 async  def stdio(name: str) -> str:
@@ -34,7 +34,7 @@ async  def stdio(name: str) -> str:
     返回:
         用户性别
     """
-    return f"{name}：男"
+    return f"{name}性别：男"
 
 
 if __name__ == '__main__':
