@@ -62,7 +62,7 @@ async  def sex(name: str) -> str:
     return f"{name}性别：男"
 
 
-if __name__ == '__main__':
+if __name__ == '__main__': # 指令启动 uv run mcp_sse_server.py
     # mcp.run(transport="streamable-http")  # uv --dir E:\dev\ai\mcp_demo  run mcp_server.py
     print("sse已注册的工具:")
     for tool_info in mcp_sse._tool_manager.list_tools():  # 这个方法是同步的

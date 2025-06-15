@@ -16,29 +16,6 @@ mcp_streamable = FastMCP(
 )
 
 
-
-@mcp_sse.tool()
-async  def name(xing: str) -> str:
-    """获取用户的姓名
-    参数:
-        xing：姓
-    返回:
-        用户姓名
-    """
-    return f"姓：{xing} 名领"
-
-@mcp_sse.tool()
-async  def sex(name: str) -> str:
-    """获取用户的性别
-
-    参数:
-        name: 用户的姓名
-
-    返回:
-        用户性别
-    """
-    return f"{name}性别：男"
-
 @mcp_streamable.tool()
 async  def name(xing: str) -> str:
     """获取用户的姓名
@@ -62,7 +39,7 @@ async  def sex(name: str) -> str:
     return f"{name}性别：男"
 
 
-if __name__ == '__main__':
+if __name__ == '__main__': # 指令启动 uv run mcp_streamable_server.py
     # mcp.run(transport="streamable-http")  # uv --dir E:\dev\ai\mcp_demo  run mcp_server.py
     print("sse已注册的工具:")
     for tool_info in mcp_sse._tool_manager.list_tools():  # 这个方法是同步的
