@@ -49,4 +49,4 @@ if __name__ == '__main__': # 指令启动 uv run mcp_streamable_server.py
         print(f"- {tool_info.name}: {tool_info.description}")
     # mcp.run(transport='stdio')
     # mcp_sse.run(transport="sse")
-    mcp_streamable.run(transport="streamable-http",host="0.0.0.0",port="5051",path="/mcp")
+    mcp_streamable.run(transport="streamable-http",host="0.0.0.0",port="5051")
