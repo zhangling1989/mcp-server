@@ -187,8 +187,8 @@ if __name__ == "__main__":
     run_proxy_server(
         proxy_host='localhost',
         proxy_port=8080,
-        mcp_base_url='http://10.0.1.21:5050/sse/',
-        mcp_host='10.0.1.21',
+        mcp_base_url='http://45.78.212.56:5050/sse/',
+        mcp_host='45.78.212.56',
         auth_token='your-auth-token',
         verify_ssl=True
     )
