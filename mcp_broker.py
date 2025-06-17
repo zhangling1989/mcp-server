@@ -1,239 +1,194 @@
-#!/usr/bin/env python3
+import json
+import logging
+import time
+from typing import Dict, Any, Optional, Tuple
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+import socketserver
+import requests
+from sseclient import SSEClient
 
-import sys
-import subprocess
-import threading
-import argparse
-import os
-
-# --- Configuration ---
-LOG_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "mcp_io.log")
-# --- End Configuration ---
-
-# --- Argument Parsing ---
-parser = argparse.ArgumentParser(
-    description="Wrap a command, passing STDIN/STDOUT verbatim while logging them.",
-    usage="%(prog)s <command> [args...]"
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("sse_mcp_proxy.log"),
+        logging.StreamHandler()
+    ]
 )
-# Capture the command and all subsequent arguments
-parser.add_argument('command', nargs=argparse.REMAINDER,
-                    help='The command and its arguments to execute.')
+logger = logging.getLogger(__name__)
 
-open(LOG_FILE, 'w', encoding='utf-8')
 
-if len(sys.argv) == 1:
-    parser.print_help(sys.stderr)
-    sys.exit(1)
+class SSEProxyHandler(BaseHTTPRequestHandler):
+    """处理客户端到MCP服务的SSE代理请求"""
 
-args = parser.parse_args()
+    protocol_version = 'HTTP/1.1'
 
-if not args.command:
-    print("Error: No command provided.", file=sys.stderr)
-    parser.print_help(sys.stderr)
-    sys.exit(1)
+    def __init__(self, request, client_address, server, mcp_config: Dict[str, Any]):
+        self.mcp_config = mcp_config
+        super().__init__(request, client_address, server)
 
-target_command = args.command
-# --- End Argument Parsing ---
+    def _log_proxy_event(self, event_type: str, details: Dict[str, Any]):
+        """记录代理事件"""
+        log_entry = {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "level": "INFO",
+            "event": event_type,
+            "client_ip": self.client_address[0],
+            "proxy_port": self.server.server_address[1],
+            **details
+        }
+        logger.info(json.dumps(log_entry))
 
-# --- I/O Forwarding Functions ---
-# These will run in separate threads
+    def _log_request(self):
+        """记录客户端请求"""
+        headers = dict(self.headers)
+        self._log_proxy_event("client_request", {
+            "method": self.command,
+            "path": self.path,
+            "headers": headers,
+            "remote_addr": self.client_address[0]
+        })
 
-def forward_and_log_stdin(proxy_stdin, target_stdin, log_file):
-    """Reads from proxy's stdin, logs it, writes to target's stdin."""
-    try:
-        while True:
-            # Read line by line from the script's actual stdin
-            line_bytes = proxy_stdin.readline()
-            if not line_bytes:  # EOF reached
-                break
+    def _log_response(self, response_event: Dict[str, Any]):
+        """记录服务端响应事件"""
+        self._log_proxy_event("server_response", response_event)
 
-            # Decode for logging (assuming UTF-8, adjust if needed)
-            try:
-                 line_str = line_bytes.decode('utf-8')
-            except UnicodeDecodeError:
-                 line_str = f"[Non-UTF8 data, {len(line_bytes)} bytes]\n" # Log representation
+    def do_GET(self):
+        """处理GET请求并代理到MCP服务"""
+        self._log_request()
 
-            # Log with prefix
-            log_file.write(f"输入: {line_str}")
-            log_file.flush() # Ensure log is written promptly
+        # 准备转发到MCP的请求
+        mcp_url = f"{self.mcp_config['base_url']}{self.path}"
+        headers = dict(self.headers)
 
-            # Write the original bytes to the target process's stdin
-            target_stdin.write(line_bytes)
-            target_stdin.flush() # Ensure target receives it promptly
+        # 添加或修改特定请求头
+        headers['Host'] = self.mcp_config['host']
+        if 'Authorization' not in headers and 'auth_token' in self.mcp_config:
+            headers['Authorization'] = f"Bearer {self.mcp_config['auth_token']}"
 
-    except Exception as e:
-        # Log errors happening during forwarding
         try:
-            log_file.write(f"!!! STDIN Forwarding Error: {e}\n")
-            log_file.flush()
-        except: pass # Avoid errors trying to log errors if log file is broken
+            # 连接到MCP服务
+            self._log_proxy_event("connecting_to_mcp", {
+                "mcp_url": mcp_url
+            })
 
-    finally:
-        # Important: Close the target's stdin when proxy's stdin closes
-        # This signals EOF to the target process (like test.sh's read loop)
-        try:
-            target_stdin.close()
-            log_file.write("--- STDIN stream closed to target ---\n")
-            log_file.flush()
+            # 初始化SSE客户端连接到MCP
+            sse_client = SSEClient(mcp_url, headers=headers,
+                                   verify=self.mcp_config.get('verify_ssl', True))
+
+            # 向客户端发送响应头
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.end_headers()
+
+            # 代理转发SSE事件
+            for event in sse_client:
+                if event.data or event.event:
+                    # 构建要发送给客户端的SSE消息
+                    sse_message = ""
+                    if event.id:
+                        sse_message += f"id: {event.id}\n"
+                    if event.event:
+                        sse_message += f"event: {event.event}\n"
+                    if event.data:
+                        sse_message += f"data: {event.data}\n"
+                    sse_message += "\n"
+
+                    # 记录服务端响应
+                    try:
+                        data_obj = json.loads(event.data) if event.data else {}
+                    except json.JSONDecodeError:
+                        data_obj = {"raw_data": event.data}
+
+                    self._log_response({
+                        "event_type": event.event,
+                        "message_id": event.id,
+                        "data": data_obj
+                    })
+
+                    # 发送到客户端
+                    try:
+                        self.wfile.write(sse_message.encode('utf-8'))
+                        self.wfile.flush()
+                    except Exception as e:
+                        self._log_proxy_event("client_disconnect", {
+                            "error": str(e),
+                            "client_ip": self.client_address[0]
+                        })
+                        break
         except Exception as e:
-             try:
-                log_file.write(f"!!! Error closing target STDIN: {e}\n")
-                log_file.flush()
-             except: pass
+            self._log_proxy_event("proxy_error", {
+                "error": str(e),
+                "mcp_url": mcp_url
+            })
+            self.send_error(500, f"Proxy Error: {str(e)}")
+
+    def log_message(self, format, *args):
+        """禁用默认日志记录，使用自定义日志"""
+        pass
 
 
-def forward_and_log_stdout(target_stdout, proxy_stdout, log_file):
-    """Reads from target's stdout, logs it, writes to proxy's stdout."""
+class ThreadingSSEProxyServer(ThreadingHTTPServer, socketserver.ThreadingMixIn):
+    """多线程SSE代理服务器"""
+    daemon_threads = True
+
+    def __init__(self, server_address: Tuple[str, int], mcp_config: Dict[str, Any]):
+        def handler(*args):
+            SSEProxyHandler(*args, mcp_config=mcp_config)
+
+        super().__init__(server_address, handler)
+        self.mcp_config = mcp_config
+        self.allow_reuse_address = True
+
+
+def run_proxy_server(proxy_host: str = 'localhost', proxy_port: int = 8080,
+                     mcp_base_url: str = 'https://mcp-service.com',
+                     mcp_host: str = 'mcp-service.com',
+                     auth_token: Optional[str] = None,
+                     verify_ssl: bool = True):
+    """
+    运行SSE代理服务器
+
+    Args:
+        proxy_host: 代理服务器监听地址
+        proxy_port: 代理服务器监听端口
+        mcp_base_url: MCP服务基础URL
+        mcp_host: MCP服务主机名
+        auth_token: 访问MCP服务的认证令牌
+        verify_ssl: 是否验证SSL证书
+    """
+    mcp_config = {
+        "base_url": mcp_base_url,
+        "host": mcp_host,
+        "auth_token": auth_token,
+        "verify_ssl": verify_ssl
+    }
+
+    server_address = (proxy_host, proxy_port)
+    httpd = ThreadingSSEProxyServer(server_address, mcp_config)
+
+    logger.info(f"SSE Proxy Server running on {proxy_host}:{proxy_port}, "
+                f"proxying to {mcp_base_url}")
+
     try:
-        while True:
-            # Read line by line from the target process's stdout
-            line_bytes = target_stdout.readline()
-            if not line_bytes: # EOF reached (process exited or closed stdout)
-                break
-
-            # Decode for logging
-            try:
-                 line_str = line_bytes.decode('utf-8')
-            except UnicodeDecodeError:
-                 line_str = f"[Non-UTF8 data, {len(line_bytes)} bytes]\n"
-
-            # Log with prefix
-            log_file.write(f"输出: {line_str}")
-            log_file.flush()
-
-            # Write the original bytes to the script's actual stdout
-            proxy_stdout.write(line_bytes)
-            proxy_stdout.flush() # Ensure output is seen promptly
-
-    except Exception as e:
-        try:
-            log_file.write(f"!!! STDOUT Forwarding Error: {e}\n")
-            log_file.flush()
-        except: pass
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
     finally:
-        try:
-            log_file.flush()
-        except: pass
-        # Don't close proxy_stdout (sys.stdout) here
+        httpd.server_close()
+        logger.info("SSE Proxy Server stopped")
 
-# --- Main Execution ---
-process = None
-log_f = None
-exit_code = 1 # Default exit code in case of early failure
 
-try:
-    # Open log file in append mode ('a') for the threads
-    log_f = open(LOG_FILE, 'a', encoding='utf-8')
-
-    # Start the target process
-    # We use pipes for stdin/stdout
-    # We work with bytes (bufsize=0 for unbuffered binary, readline() still works)
-    # stderr=subprocess.PIPE could be added to capture stderr too if needed.
-    process = subprocess.Popen(
-        target_command,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, # Capture stderr too, good practice
-        bufsize=0 # Use 0 for unbuffered binary I/O
+if __name__ == "__main__":
+    # 使用示例
+    run_proxy_server(
+        proxy_host='localhost',
+        proxy_port=8080,
+        mcp_base_url='http://10.0.1.21:5050/sse/',
+        mcp_host='10.0.1.21',
+        auth_token='your-auth-token',
+        verify_ssl=True
     )
-
-    # Pass binary streams to threads
-    stdin_thread = threading.Thread(
-        target=forward_and_log_stdin,
-        args=(sys.stdin.buffer, process.stdin, log_f),
-        daemon=True # Allows main thread to exit even if this is stuck (e.g., waiting on stdin) - reconsider if explicit join is needed
-    )
-
-    stdout_thread = threading.Thread(
-        target=forward_and_log_stdout,
-        args=(process.stdout, sys.stdout.buffer, log_f),
-        daemon=True
-    )
-
-    # Optional: Handle stderr similarly (log and pass through)
-    stderr_thread = threading.Thread(
-        target=forward_and_log_stdout, # Can reuse the function
-        args=(process.stderr, sys.stderr.buffer, log_f), # Pass stderr streams
-        # Add a different prefix in the function if needed, or modify function
-        # For now, it will log with "STDOUT:" prefix - might want to change function
-        # Let's modify the function slightly for this
-        daemon=True
-    )
-    # A slightly modified version for stderr logging
-    def forward_and_log_stderr(target_stderr, proxy_stderr, log_file):
-        """Reads from target's stderr, logs it, writes to proxy's stderr."""
-        try:
-            while True:
-                line_bytes = target_stderr.readline()
-                if not line_bytes: break
-                try: line_str = line_bytes.decode('utf-8')
-                except UnicodeDecodeError: line_str = f"[Non-UTF8 data, {len(line_bytes)} bytes]\n"
-                log_file.write(f"STDERR: {line_str}") # Use STDERR prefix
-                log_file.flush()
-                proxy_stderr.write(line_bytes)
-                proxy_stderr.flush()
-        except Exception as e:
-            try:
-                log_file.write(f"!!! STDERR Forwarding Error: {e}\n")
-                log_file.flush()
-            except: pass
-        finally:
-            try:
-                log_file.flush()
-            except: pass
-
-    stderr_thread = threading.Thread(
-        target=forward_and_log_stderr,
-        args=(process.stderr, sys.stderr.buffer, log_f),
-        daemon=True
-    )
-
-
-    # Start the forwarding threads
-    stdin_thread.start()
-    stdout_thread.start()
-    stderr_thread.start() # Start stderr thread too
-
-    # Wait for the target process to complete
-    process.wait()
-    exit_code = process.returncode
-
-    # Wait briefly for I/O threads to finish flushing last messages
-    # Since they are daemons, they might exit abruptly with the main thread.
-    # Joining them ensures cleaner shutdown and logging.
-    # We need to make sure the pipes are closed so the reads terminate.
-    # process.wait() ensures target process is dead, pipes should close naturally.
-    stdin_thread.join(timeout=1.0) # Add timeout in case thread hangs
-    stdout_thread.join(timeout=1.0)
-    stderr_thread.join(timeout=1.0)
-
-
-except Exception as e:
-    print(f"MCP Logger Error: {e}", file=sys.stderr)
-    # Try to log the error too
-    if log_f and not log_f.closed:
-        try:
-            log_f.write(f"!!! MCP Logger Main Error: {e}\n")
-            log_f.flush()
-        except: pass # Ignore errors during final logging attempt
-    exit_code = 1 # Indicate logger failure
-
-finally:
-    # Ensure the process is terminated if it's still running (e.g., if logger crashed)
-    if process and process.poll() is None:
-        try:
-            process.terminate()
-            process.wait(timeout=1.0) # Give it a moment to terminate
-        except: pass # Ignore errors during cleanup
-        if process.poll() is None: # Still running?
-             try: process.kill() # Force kill
-             except: pass # Ignore kill errors
-
-    # Final log message
-    if log_f and not log_f.closed:
-        try:
-            log_f.close()
-        except: pass # Ignore errors during final logging attempt
-
-    # Exit with the target process's exit code
-    sys.exit(exit_code)
