@@ -20,7 +20,7 @@ def setup_logging():
 
     # 创建文件处理器，支持日志轮转
     file_handler = RotatingFileHandler(
-        'fastmcp_proxy.log',
+        'logs/fastmcp_proxy.log',
         maxBytes=10 * 1024 * 1024,  # 10MB
         backupCount=5
     )
