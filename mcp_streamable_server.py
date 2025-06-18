@@ -12,25 +12,25 @@ mcp_streamable = FastMCP(
 
 @mcp_streamable.tool()
 async  def name(first_name: str) -> str:
-    """Get user name
+    """获取用户姓名
     Args:
-        first name：
+        first_name: 用户的姓
     return:
-        user name
+        用户姓名
     """
-    return f"{first_name} ling"
+    return f"{first_name} 领"
 
 @mcp_streamable.tool()
 async  def sex(name: str) -> str:
-    """get user sex
+    """获取用户性别
 
     Args:
-        name: user name
+        name: 用户姓名
 
     return:
-        user sex
+        用户性别
     """
-    return f"{name} sex：male"
+    return f"{name} 性别: 男"
 
 
 if __name__ == '__main__': # 指令启动 uv run mcp_streamable_server.py
