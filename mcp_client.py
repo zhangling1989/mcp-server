@@ -9,9 +9,9 @@ from fastmcp.client import StdioTransport,SSETransport,StreamableHttpTransport #
 import asyncio
 
 sse_url = "http://localhost:5050/sse"
-streamablehttp_url = "http://localhost:5051/mcp"
+streamablehttp_url = "http://localhost:5051/streamable"
 sse_client = Client(SSETransport(sse_url))
-streamablehttp_client = Client(StreamableHttpTransport("http://localhost:5051/mcp"))
+streamablehttp_client = Client(StreamableHttpTransport(streamablehttp_url))
 
 
 
