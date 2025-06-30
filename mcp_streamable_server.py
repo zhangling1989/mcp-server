@@ -33,7 +33,7 @@ async  def contractsByProjectName(project_name: str) -> str:
     END AS contract_type,
     amount, tax_amount, approval_status, approval_date
     FROM cost_contract
-    WHERE project_name = {project_name} AND del_flag = 0
+    WHERE project_name = '{project_name}' AND del_flag = 0
     ORDER BY created_date DESC
     LIMIT 10;
     '''
@@ -53,8 +53,8 @@ async  def contractsByProjectNameAndcontractType(project_name: str,contract_type
     sql = f'''
     SELECT contract_code, contract_name, contract_type, amount 
     FROM cost_contract 
-    WHERE project_name = {project_name} 
-      AND contract_type = {contract_type} 
+    WHERE project_name = '{project_name}' 
+      AND contract_type = '{contract_type}' 
       AND del_flag = 0 
     ORDER BY created_date DESC 
     LIMIT 10;
