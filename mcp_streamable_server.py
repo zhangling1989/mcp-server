@@ -16,7 +16,7 @@ async  def contractsByProjectName(project_name: str) -> str:
     Args:
         project_name: 项目名称
     return:
-        合同列表的文本数据
+        查询合同列表的sql语句
     """
 
     sql = f'''
@@ -47,7 +47,7 @@ async  def contractsByProjectNameAndcontractType(project_name: str,contract_type
         project_name: 项目名称
         contract_type: 合同类型
     return:
-        合同列表的文本数据
+        查询合同列表的sql语句
     """
 
     sql = f'''
