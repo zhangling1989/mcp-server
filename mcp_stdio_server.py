@@ -1,19 +1,9 @@
-from typing import Any
-import  httpx
-
-# from mcp.server.fastmcp import FastMCP
-
+import mcp
 from fastmcp import FastMCP
 
-mcp_sse = FastMCP(
-    name="mcp-sse-server",
-    host="0.0.0.0",
-    port=5050
-)
+mcp_stdio = FastMCP(name="mcp-stdio-server")
 
-
-
-@mcp_sse.tool()
+@mcp_stdio.tool()
 async  def name(first_name: str) -> str:
     """获取用户姓名
     Args:
@@ -23,7 +13,7 @@ async  def name(first_name: str) -> str:
     """
     return f"{first_name} 领"
 
-@mcp_sse.tool()
+@mcp_stdio.tool()
 async  def sex(name: str) -> str:
     """获取用户性别
 
@@ -35,11 +25,9 @@ async  def sex(name: str) -> str:
     """
     return f"{name} 性别: 男"
 
-
-
 if __name__ == '__main__': # 指令启动 uv run mcp_sse_server.py
-    # mcp.run(transport="streamable-http")  # uv --dir E:\dev\ai\mcp_demo  run mcp_server.py
-    print("sse已注册的工具:")
-    for tool_info in mcp_sse._tool_manager.list_tools():  # 这个方法是同步的
+    # mcp.run(transport="streamable-http")  # uv --directory E:\dev\ai\mcp_demo  run mcp_stdio_server.py
+    print("stdio已注册的工具:")
+    for tool_info in mcp_stdio._tool_manager.list_tools():  # 这个方法是同步的
         print(f"- {tool_info.name}: {tool_info.description}")
-    mcp_sse.run(transport="sse")
+    mcp_stdio.run(transport="stdio")
